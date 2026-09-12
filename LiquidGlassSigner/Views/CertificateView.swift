@@ -52,8 +52,13 @@ struct CertificateView: View {
                                               color: cert.isExpired ? .red : .green)
                                 }
                                 Divider().overlay(.white.opacity(0.15))
-                                labelRow("生效时间", cert.notBefore)
-                                labelRow("过期时间", cert.notAfter)
+                                HStack {
+                                    Text("证书状态").foregroundStyle(.white.opacity(0.55))
+                                    Spacer()
+                                    Text(cert.isExpired ? "已过期" : "有效期正常")
+                                        .foregroundStyle(.white.opacity(0.85))
+                                }
+                                .font(.subheadline)
                             }
                             .padding(18)
                             .glassCard(cornerRadius: 20)
@@ -75,16 +80,6 @@ struct CertificateView: View {
         } message: {
             Text(errorMessage ?? "")
         }
-    }
-
-    private func labelRow(_ title: String, _ date: Date) -> some View {
-        HStack {
-            Text(title).foregroundStyle(.white.opacity(0.55))
-            Spacer()
-            Text(date.formatted(date: .abbreviated, time: .shortened))
-                .foregroundStyle(.white.opacity(0.85))
-        }
-        .font(.subheadline)
     }
 
     private func handleImport(_ result: Result<URL, Error>) {

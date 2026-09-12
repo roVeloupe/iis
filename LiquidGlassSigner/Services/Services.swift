@@ -31,19 +31,24 @@ enum CertificateService {
             guard SecIdentityCopyCertificate(identity, &certRef) == errSecSuccess, let cert = certRef else { return nil }
             return CertificateInfo(
                 commonName: SecCertificateCopySubjectSummary(cert) as String? ?? "未知证书",
-                notBefore: validityDate(cert, kSecOIDX509V1ValidityNotBefore),
-                notAfter: validityDate(cert, kSecOIDX509V1ValidityNotAfter)
+                isExpired: isCertificateExpired(cert)
             )
         }
     }
 
-    private static func validityDate(_ cert: SecCertificate, _ oid: CFString) -> Date {
-        guard let values = SecCertificateCopyValues(cert, [oid] as CFArray, nil) as? [CFString: Any],
-              let dict = values[oid] as? [CFString: Any],
-              let raw = dict[kSecPropertyKeyValue as CFString] else { return .distantPast }
-        if let date = raw as? Date { return date }
-        if let num = raw as? NSNumber { return Date(timeIntervalSince1970: num.doubleValue) }
-        return .distantPast
+    /// 通过 SecTrust 评估判断证书是否已过期（errSecCertificateExpired = -67818）
+    private static func isCertificateExpired(_ cert: SecCertificate) -> Bool {
+        var trust: SecTrust?
+        let status = SecTrustCreateWithCertificates(cert, SecPolicyCreateBasicX509(), &trust)
+        guard status == errSecSuccess, let trust = trust else { return false }
+        var error: CFError?
+        let valid = SecTrustEvaluateWithError(trust, &error)
+        if !valid, let nsError = error as NSError?,
+           nsError.domain == NSOSStatusErrorDomain,
+           nsError.code == Int(errSecCertificateExpired) {
+            return true
+        }
+        return false
     }
 }
 

@@ -4,10 +4,7 @@ import Foundation
 struct CertificateInfo: Identifiable {
     let id = UUID()
     let commonName: String
-    let notBefore: Date
-    let notAfter: Date
-
-    var isExpired: Bool { notAfter < Date() }
+    let isExpired: Bool
 }
 
 /// 从 .mobileprovision 中解析出的描述文件信息
