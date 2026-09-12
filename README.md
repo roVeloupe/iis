@@ -6,6 +6,7 @@ iOS 26-27 Liquid Glass 风格签名工具 —— 基于 GitHub Actions 在云端
 
 | 能力 | 说明 | 入口 |
 | --- | --- | --- |
+| Swift 构建 IPA | 用 Swift/SwiftUI 构建 iOS 26-27 Liquid Glass 签名工具，产出 IPA | `.github/workflows/build-ipa.yml` |
 | IPA 重签名 | 上传 IPA 直链 + p12 + mobileprovision，用 zsign 云端重签名 | `.github/workflows/resign-ipa.yml` |
 | 源码自动构建 + 签名 | macOS Runner 自动 xcodebuild Archive 并手动签名导出 IPA | `.github/workflows/build-sign.yml` |
 | 证书管理 | 查看 p12 / 描述文件 / IPA 签名状态，签名前体检 | `scripts/inspect.sh` |
@@ -15,14 +16,33 @@ iOS 26-27 Liquid Glass 风格签名工具 —— 基于 GitHub Actions 在云端
 
 ```
 .
+├── LiquidGlassSigner/           # Swift 源码工程（iOS 26-27 · Liquid Glass 风格）
+│   ├── App/                     # 应用入口
+│   ├── Models/                  # 数据模型（证书/描述文件）
+│   ├── Services/                # p12 导入与描述文件解析（Security 框架）
+│   └── Views/                   # SwiftUI 视图（毛玻璃/极光背景组件）
+├── project.yml                  # XcodeGen 工程配置
 ├── .github/workflows/
-│   ├── resign-ipa.yml      # IPA 重签名（ubuntu + zsign）
-│   └── build-sign.yml      # 源码构建 + 签名（macOS + xcodebuild）
+│   ├── build-ipa.yml            # Swift 构建 IPA（macOS + xcodegen + xcodebuild）
+│   ├── resign-ipa.yml           # IPA 重签名（ubuntu + zsign）
+│   └── build-sign.yml           # 外部源码构建 + 签名（macOS + xcodebuild）
 ├── scripts/
-│   ├── resign.sh           # 本地/云端重签名脚本
-│   └── inspect.sh          # 证书与 IPA 体检工具
-└── web/index.html          # GitHub Pages 控制台
+│   ├── resign.sh                # 本地/云端重签名脚本
+│   └── inspect.sh               # 证书与 IPA 体检工具
+└── web/index.html               # GitHub Pages 控制台
 ```
+
+## Swift 构建 IPA
+
+工程为 SwiftUI 应用，部署目标 iOS 26.0，使用 `project.yml`（XcodeGen）生成工程，避免手工维护 `.xcodeproj`。
+
+在 `Actions` 页运行 **Liquid Glass - Swift 构建 IPA**（push 到 main 时也会自动触发），macOS Runner 上会：
+
+1. 安装 XcodeGen 并生成 Xcode 工程
+2. `xcodebuild` 以 Release 配置构建（`CODE_SIGNING_ALLOWED=NO`）
+3. 把 `.app` 打包为 `Payload` 结构的标准 IPA 并作为 `unsigned-ipa` 工件上传
+
+产物未签名，需再用 **Liquid Glass 签名 - IPA 重签名** 工作流填入你的 p12 证书与描述文件签名，即可安装到 iOS 26/27 设备。
 
 ## 快速开始
 

@@ -1,0 +1,59 @@
+name: Liquid Glass - Swift 构建 IPA
+
+# 用 Swift 构建 iOS 26-27 Liquid Glass 签名工具，产出未签名 IPA
+# 之后可再用「Liquid Glass 签名 - IPA 重签名」工作流填入 p12 进行签名
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - LiquidGlassSigner/**
+      - project.yml
+
+jobs:
+  build-ipa:
+    name: Swift 构建 IPA
+    runs-on: macos-15
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 选择最新 Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "latest"
+
+      - name: 安装 XcodeGen
+        run: brew install xcodegen
+
+      - name: 生成 Xcode 工程
+        run: xcodegen generate
+
+      - name: 构建（iOS 设备，无签名）
+        run: |
+          xcodebuild \
+            -project LiquidGlassSigner.xcodeproj \
+            -scheme LiquidGlassSigner \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: 打包 IPA
+        run: |
+          APP_PATH=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" | head -n 1)
+          test -n "$APP_PATH" || { echo "未找到 .app 产物"; exit 1; }
+          rm -rf Payload LiquidGlassSigner-unsigned.ipa
+          mkdir -p Payload
+          cp -R "$APP_PATH" Payload/
+          zip -qry LiquidGlassSigner-unsigned.ipa Payload
+          ls -lh LiquidGlassSigner-unsigned.ipa
+
+      - name: 上传 IPA 工件
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-ipa
+          path: LiquidGlassSigner-unsigned.ipa
+          if-no-files-found: error
