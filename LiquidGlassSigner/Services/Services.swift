@@ -25,8 +25,9 @@ enum CertificateService {
         guard status == errSecSuccess else { throw SigningError.badPassword }
         guard let items = rawItems as? [[String: Any]], !items.isEmpty else { throw SigningError.empty }
 
-        return items.compactMap { item in
-            guard let identity = item[kSecImportItemIdentity as String] as? SecIdentity else { return nil }
+        return items.compactMap { item -> CertificateInfo? in
+            guard let rawIdentity = item[kSecImportItemIdentity as String] else { return nil }
+            let identity = rawIdentity as! SecIdentity
             var certRef: SecCertificate?
             guard SecIdentityCopyCertificate(identity, &certRef) == errSecSuccess, let cert = certRef else { return nil }
             return CertificateInfo(
@@ -43,9 +44,7 @@ enum CertificateService {
         guard status == errSecSuccess, let trust = trust else { return false }
         var error: CFError?
         let valid = SecTrustEvaluateWithError(trust, &error)
-        if !valid, let nsError = error as NSError?,
-           nsError.domain == NSOSStatusErrorDomain,
-           nsError.code == Int(errSecCertificateExpired) {
+        if !valid, let error = error, CFErrorGetCode(error) == CFIndex(errSecCertificateExpired) {
             return true
         }
         return false
