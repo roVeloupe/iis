@@ -1,0 +1,128 @@
+name: Liquid Glass 签名 - 自动构建并签名
+
+# iOS 26-27 Liquid Glass 签名工具 · 源码自动构建 + 签名
+# 原理：在 macOS Runner 上用 xcodebuild 从源码 Archive，再用用户提供的
+#       p12 + mobileprovision 手动签名并导出 IPA
+# 用法：Actions → 选择本工作流 → Run workflow → 填入源码仓库与证书参数 → 下载 built-ipa 工件
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_repo:
+        description: "iOS 源码仓库 URL，如 owner/repo（必填）"
+        required: true
+        type: string
+      source_branch:
+        description: "源码分支"
+        required: false
+        type: string
+        default: "main"
+      project_path:
+        description: "工程路径，如 MyApp.xcodeproj（必填）"
+        required: true
+        type: string
+      scheme:
+        description: "Xcode Scheme 名称（必填）"
+        required: true
+        type: string
+      export_method:
+        description: "导出方式"
+        required: false
+        type: choice
+        default: "ad-hoc"
+        options:
+          - ad-hoc
+          - development
+          - enterprise
+          - app-store
+      cert_base64:
+        description: "签名证书 .p12 的 Base64（必填）"
+        required: true
+        type: string
+      cert_password:
+        description: ".p12 证书密码（必填）"
+        required: true
+        type: string
+      provision_base64:
+        description: "描述文件 .mobileprovision 的 Base64（必填）"
+        required: true
+        type: string
+
+jobs:
+  build:
+    name: 构建并签名
+    runs-on: macos-14
+    steps:
+      - name: 检出源码
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.inputs.source_repo }}
+          ref: ${{ github.event.inputs.source_branch }}
+
+      - name: 导入证书到钥匙串
+        env:
+          CERT_B64: ${{ github.event.inputs.cert_base64 }}
+          CERT_PWD: ${{ github.event.inputs.cert_password }}
+        run: |
+          echo "$CERT_B64" | base64 -d > cert.p12
+          echo "$CERT_PWD" > cert.pwd
+
+          KEYCHAIN=build.keychain
+          security create-keychain -p build123 "$KEYCHAIN"
+          security default-keychain -s "$KEYCHAIN"
+          security unlock-keychain -p build123 "$KEYCHAIN"
+          security import cert.p12 -k "$KEYCHAIN" -P "$CERT_PWD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k build123 "$KEYCHAIN"
+
+      - name: 安装描述文件
+        env:
+          PROV_B64: ${{ github.event.inputs.provision_base64 }}
+        run: |
+          echo "$PROV_B64" | base64 -d > profile.mobileprovision
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          cp profile.mobileprovision "$HOME/Library/MobileDevice/Provisioning Profiles/"
+
+      - name: 生成导出配置
+        env:
+          EXPORT_METHOD: ${{ github.event.inputs.export_method }}
+        run: |
+          cat > export.plist <<'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>$EXPORT_METHOD</string>
+              <key>signingStyle</key>
+              <string>manual</string>
+          </dict>
+          </plist>
+          EOF
+
+      - name: Archive 构建
+        env:
+          PROJECT_PATH: ${{ github.event.inputs.project_path }}
+          SCHEME: ${{ github.event.inputs.scheme }}
+        run: |
+          xcodebuild archive \
+            -project "$PROJECT_PATH" \
+            -scheme "$SCHEME" \
+            -archivePath build/App.xcarchive \
+            -allowProvisioningUpdates \
+            -quiet
+
+      - name: 导出签名 IPA
+        run: |
+          xcodebuild -exportArchive \
+            -archivePath build/App.xcarchive \
+            -exportPath build/export \
+            -exportOptionsPlist export.plist \
+            -allowProvisioningUpdates \
+            -quiet
+
+      - name: 上传 IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: built-ipa
+          path: build/export/*.ipa
+          if-no-files-found: error

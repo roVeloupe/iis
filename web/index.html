@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="基于 GitHub Actions 的 iOS 26-27 Liquid Glass 风格 IPA 签名工具">
+<title>Liquid Glass Signer · iOS 26-27 签名工具</title>
+<style>
+  :root {
+    --glass-bg: linear-gradient(145deg, rgba(255,255,255,.16), rgba(255,255,255,.05));
+    --glass-border: 1px solid rgba(255,255,255,.28);
+    --glass-blur: blur(26px) saturate(170%);
+    --text: #f5f7ff;
+    --text-dim: rgba(245,247,255,.66);
+    --accent: #7db9ff;
+    --accent-2: #c9a7ff;
+    --radius: 26px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
+                 "HarmonyOS Sans SC", "Microsoft YaHei", sans-serif;
+    color: var(--text);
+    min-height: 100vh;
+    background: #0a0e1f;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---------- 极光背景 ---------- */
+  .aurora {
+    position: fixed; inset: 0; z-index: -2;
+    background:
+      radial-gradient(120% 90% at 85% 10%, #1b3b8f 0%, transparent 55%),
+      radial-gradient(100% 80% at 10% 85%, #6b2f9e 0%, transparent 55%),
+      radial-gradient(90% 70% at 50% 45%, #0f2c5e 0%, transparent 60%),
+      #0a0e1f;
+  }
+  .blob {
+    position: fixed; border-radius: 50%; filter: blur(90px); opacity: .5;
+    z-index: -1; animation: drift 22s ease-in-out infinite alternate;
+  }
+  .b1 { width: 46vw; height: 46vw; left: -8vw; top: -10vh;
+        background: radial-gradient(circle, #2f6fe0, transparent 70%); }
+  .b2 { width: 38vw; height: 38vw; right: -6vw; top: 22vh;
+        background: radial-gradient(circle, #b06bff, transparent 70%);
+        animation-delay: -7s; }
+  .b3 { width: 42vw; height: 42vw; left: 22vw; bottom: -16vh;
+        background: radial-gradient(circle, #17b3c9, transparent 70%);
+        animation-delay: -14s; }
+  @keyframes drift {
+    0%   { transform: translate(0, 0) scale(1); }
+    50%  { transform: translate(4vw, 3vh) scale(1.12); }
+    100% { transform: translate(-3vw, -2vh) scale(.96); }
+  }
+
+  /* ---------- 玻璃基础 ---------- */
+  .glass {
+    position: relative;
+    background: var(--glass-bg);
+    border: var(--glass-border);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border-radius: var(--radius);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,.35),
+      inset 0 -1px 0 rgba(255,255,255,.06),
+      0 24px 70px rgba(0,0,0,.45);
+  }
+  .glass::before {  /* 镜面高光 */
+    content: ""; position: absolute; inset: 0; border-radius: inherit;
+    background:
+      radial-gradient(120% 60% at 18% 0%, rgba(255,255,255,.28), transparent 46%),
+      radial-gradient(60% 40% at 85% -10%, rgba(255,255,255,.14), transparent 50%);
+    pointer-events: none;
+  }
+  .glass > * { position: relative; }
+
+  .wrap { max-width: 1060px; margin: 0 auto; padding: 0 22px; }
+
+  /* ---------- 头部 ---------- */
+  header.hero {
+    margin: 46px 0 34px; padding: 46px 30px 40px; text-align: center; overflow: hidden;
+  }
+  .badge {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 7px 16px; border-radius: 999px; font-size: 13px; font-weight: 600;
+    letter-spacing: .06em;
+    background: linear-gradient(135deg, rgba(255,255,255,.22), rgba(255,255,255,.08));
+    border: 1px solid rgba(255,255,255,.3);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.4);
+  }
+  .badge .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: linear-gradient(135deg, #7db9ff, #c9a7ff);
+    box-shadow: 0 0 12px rgba(125,185,255,.9);
+  }
+  h1 {
+    font-size: clamp(34px, 6vw, 56px); font-weight: 800; letter-spacing: -.02em;
+    margin: 18px 0 10px;
+    background: linear-gradient(180deg, #ffffff 30%, rgba(255,255,255,.55));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .hero p { color: var(--text-dim); font-size: 16px; max-width: 620px; margin: 0 auto; line-height: 1.7; }
+  .hero .chips { margin-top: 22px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+  .chip {
+    font-size: 12.5px; padding: 6px 14px; border-radius: 999px;
+    color: var(--text-dim);
+    background: rgba(255,255,255,.08);
+    border: 1px solid rgba(255,255,255,.18);
+  }
+
+  /* ---------- 区块标题 ---------- */
+  .sec-title {
+    display: flex; align-items: center; gap: 14px;
+    margin: 52px 0 22px; font-size: 22px; font-weight: 700; letter-spacing: -.01em;
+  }
+  .sec-title .num {
+    width: 34px; height: 34px; flex: none; display: grid; place-items: center;
+    border-radius: 12px; font-size: 15px; font-weight: 700;
+    background: linear-gradient(135deg, rgba(125,185,255,.5), rgba(201,167,255,.5));
+    border: 1px solid rgba(255,255,255,.3);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.4), 0 8px 24px rgba(60,120,255,.25);
+  }
+
+  /* ---------- 功能卡片 ---------- */
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 20px; }
+  .card { padding: 28px 26px; transition: transform .3s ease, box-shadow .3s ease; }
+  .card:hover { transform: translateY(-6px); }
+  .card .icon {
+    width: 52px; height: 52px; border-radius: 16px; display: grid; place-items: center;
+    margin-bottom: 18px;
+    background: linear-gradient(140deg, rgba(125,185,255,.4), rgba(201,167,255,.35));
+    border: 1px solid rgba(255,255,255,.32);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.45), 0 10px 28px rgba(60,120,255,.28);
+  }
+  .card h3 { font-size: 18px; font-weight: 700; margin-bottom: 10px; }
+  .card p { color: var(--text-dim); font-size: 14px; line-height: 1.7; }
+  .card .tag {
+    display: inline-block; margin-top: 14px; font-size: 12px; padding: 4px 10px;
+    border-radius: 999px; color: var(--accent);
+    background: rgba(125,185,255,.14); border: 1px solid rgba(125,185,255,.35);
+  }
+
+  /* ---------- 步骤 ---------- */
+  .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; }
+  .step { padding: 24px 24px 26px; }
+  .step .s-num {
+    width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center;
+    font-weight: 700; font-size: 14px; margin-bottom: 14px;
+    background: linear-gradient(135deg, #7db9ff, #c9a7ff);
+    color: #0a0e1f; box-shadow: 0 6px 18px rgba(125,185,255,.4);
+  }
+  .step h4 { font-size: 16px; margin-bottom: 8px; }
+  .step p { color: var(--text-dim); font-size: 13.5px; line-height: 1.7; }
+  .step code {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px;
+    background: rgba(0,0,0,.3); border: 1px solid rgba(255,255,255,.12);
+    padding: 1px 7px; border-radius: 7px; color: #cfe3ff;
+  }
+
+  /* ---------- 控制台 ---------- */
+  .console { padding: 30px 28px 34px; margin-top: 8px; }
+  .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; }
+  .field { padding: 18px; border-radius: 18px; background: rgba(0,0,0,.22); border: 1px solid rgba(255,255,255,.1); }
+  .field label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 12px; color: var(--text-dim); }
+  .field .fname {
+    font-size: 13px; color: var(--accent); font-weight: 600;
+    background: rgba(125,185,255,.12); border: 1px solid rgba(125,185,255,.3);
+    padding: 2px 10px; border-radius: 999px; margin-left: 8px;
+  }
+  .drop {
+    border: 1.5px dashed rgba(255,255,255,.3); border-radius: 14px;
+    padding: 20px 14px; text-align: center; font-size: 13px; color: var(--text-dim);
+    cursor: pointer; transition: all .2s; background: rgba(255,255,255,.03);
+  }
+  .drop:hover, .drop.over { border-color: var(--accent); background: rgba(125,185,255,.08); color: var(--text); }
+  .drop.done { border-style: solid; border-color: #6fd0a0; color: #b4f0cf; }
+  .drop small { display: block; margin-top: 6px; font-size: 11px; opacity: .7; }
+  input[type="text"], input[type="password"] {
+    width: 100%; padding: 13px 14px; border-radius: 14px; font-size: 14px;
+    background: rgba(0,0,0,.28); border: 1px solid rgba(255,255,255,.14); color: var(--text);
+    outline: none; transition: border-color .2s;
+  }
+  input:focus { border-color: var(--accent); }
+  input::placeholder { color: rgba(245,247,255,.35); }
+  .b64 {
+    margin-top: 12px; display: none; word-break: break-all; max-height: 120px; overflow: auto;
+    font-family: ui-monospace, Menlo, monospace; font-size: 11px; line-height: 1.6;
+    background: rgba(0,0,0,.3); border: 1px solid rgba(255,255,255,.1); border-radius: 10px; padding: 10px;
+    color: #b9d4ff;
+  }
+  .b64.show { display: block; }
+  .btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 24px; }
+  .btn {
+    flex: 1; min-width: 150px; padding: 14px 20px; border: none; border-radius: 16px;
+    font-size: 15px; font-weight: 700; cursor: pointer; color: #0a0e1f;
+    background: linear-gradient(135deg, #7db9ff, #c9a7ff);
+    box-shadow: 0 10px 30px rgba(125,185,255,.35), inset 0 1px 0 rgba(255,255,255,.6);
+    transition: transform .2s, opacity .2s;
+  }
+  .btn:hover { transform: translateY(-2px); opacity: .94; }
+  .btn:active { transform: translateY(0); }
+  .btn.ghost {
+    background: rgba(255,255,255,.1); color: var(--text);
+    border: 1px solid rgba(255,255,255,.25);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.25);
+  }
+  .out {
+    margin-top: 20px; display: none; padding: 18px; border-radius: 16px;
+    background: rgba(0,0,0,.32); border: 1px solid rgba(255,255,255,.12);
+    font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; line-height: 1.8;
+    white-space: pre-wrap; word-break: break-all; color: #cfe3ff;
+  }
+  .out.show { display: block; }
+  .toast {
+    position: fixed; left: 50%; bottom: 34px; transform: translate(-50%, 20px);
+    padding: 12px 22px; border-radius: 999px; font-size: 14px; font-weight: 600;
+    background: rgba(20,28,52,.85); color: #fff;
+    border: 1px solid rgba(255,255,255,.25);
+    backdrop-filter: blur(18px); opacity: 0; pointer-events: none; transition: all .3s; z-index: 9;
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  footer { text-align: center; padding: 46px 0 40px; color: rgba(245,247,255,.4); font-size: 12.5px; line-height: 1.8; }
+  footer a { color: rgba(125,185,255,.8); text-decoration: none; }
+
+  @media (max-width: 640px) {
+    header.hero { padding: 36px 20px 30px; margin-top: 26px; }
+    .console { padding: 22px 18px 26px; }
+  }
+</style>
+</head>
+<body>
+<div class="aurora"></div>
+<div class="blob b1"></div>
+<div class="blob b2"></div>
+<div class="blob b3"></div>
+
+<div class="wrap">
+
+  <header class="hero glass">
+    <span class="badge"><span class="dot"></span>iOS 26 · 27 &nbsp;LIQUID GLASS</span>
+    <h1>Liquid Glass Signer</h1>
+    <p>基于 GitHub Actions 的液态玻璃签名工具 —— 在云端完成 IPA 重签名、源码自动构建签名与证书管理，全程无需本机安装 Xcode。</p>
+    <div class="chips">
+      <span class="chip">p12 + mobileprovision</span>
+      <span class="chip">zsign / codesign</span>
+      <span class="chip">GitHub Actions 驱动</span>
+      <span class="chip">iOS 26-27 设备支持</span>
+    </div>
+  </header>
+
+  <section>
+    <div class="sec-title"><span class="num">01</span>三种签名能力</div>
+    <div class="grid">
+      <div class="card glass">
+        <div class="icon">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.3"/><path d="M21 3v6h-6"/><path d="M12 16v-5"/><path d="M9.5 13.5 12 16l2.5-2.5"/></svg>
+        </div>
+        <h3>IPA 重签名</h3>
+        <p>上传任意 IPA 直链 + 你的 p12 证书与描述文件，云端使用 zsign 快速重签名，自动处理扩展与插件，下载即装。</p>
+        <span class="tag">resign-ipa.yml</span>
+      </div>
+      <div class="card glass">
+        <div class="icon">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 8l10 5 10-5-10-5z"/><path d="m2 13 10 5 10-5"/><path d="m2 18 10 5 10-5"/></svg>
+        </div>
+        <h3>源码自动构建 + 签名</h3>
+        <p>提供 iOS 工程仓库，macOS Runner 自动 xcodebuild Archive 并手动签名导出 IPA，支持 ad-hoc / development / enterprise / app-store。</p>
+        <span class="tag">build-sign.yml</span>
+      </div>
+      <div class="card glass">
+        <div class="icon">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M12 8v4"/><path d="M10 12h4"/></svg>
+        </div>
+        <h3>证书管理</h3>
+        <p>快速查看 p12 证书有效期、描述文件设备列表与 IPA 当前签名状态，签名前先体检，减少失败重试。</p>
+        <span class="tag">scripts/inspect.sh</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-title"><span class="num">02</span>三步完成签名</div>
+    <div class="steps">
+      <div class="step glass">
+        <div class="s-num">1</div>
+        <h4>准备材料</h4>
+        <p>导出你的 <code>.p12</code> 证书（含密码）与 <code>.mobileprovision</code> 描述文件，将 IPA 上传到任意直链（如 Release 附件）。</p>
+      </div>
+      <div class="step glass">
+        <div class="s-num">2</div>
+        <h4>运行工作流</h4>
+        <p>在仓库 <code>Actions</code> 页选择 <code>Liquid Glass 签名 - IPA 重签名</code>，点击 <code>Run workflow</code> 并填入参数。</p>
+      </div>
+      <div class="step glass">
+        <div class="s-num">3</div>
+        <h4>下载安装</h4>
+        <p>运行完成后在 <code>Artifacts</code> 下载 <code>signed-ipa</code>，用任意安装工具装到 iOS 26 / 27 设备即可。</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-title"><span class="num">03</span>签名控制台</div>
+    <div class="console glass">
+      <div class="row">
+        <div class="field">
+          <label>① 选择 .p12 证书文件<span class="fname">cert_base64</span></label>
+          <div class="drop" id="dropCert">点击选择证书 (.p12)<small>证书仅在本机转换为 Base64，不会上传到网页服务器</small></div>
+          <input type="file" id="certFile" accept=".p12,.pfx" hidden>
+          <div class="b64" id="certB64"></div>
+        </div>
+        <div class="field">
+          <label>② 选择描述文件<span class="fname">provision_base64</span></label>
+          <div class="drop" id="dropProv">点击选择描述文件 (.mobileprovision)<small>同样仅在本机转换</small></div>
+          <input type="file" id="provFile" accept=".mobileprovision" hidden>
+          <div class="b64" id="provB64"></div>
+        </div>
+      </div>
+      <div class="row" style="margin-top:18px">
+        <div class="field">
+          <label>③ p12 证书密码<span class="fname">cert_password</span></label>
+          <input type="password" id="certPwd" placeholder="输入证书密码" autocomplete="off">
+        </div>
+        <div class="field">
+          <label>④ IPA 直链 URL<span class="fname">ipa_url</span></label>
+          <input type="text" id="ipaUrl" placeholder="https://example.com/app.ipa">
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn" id="genBtn">生成 GitHub Actions 参数</button>
+        <button class="btn ghost" id="copyBtn">复制参数 JSON</button>
+        <button class="btn ghost" id="resetBtn">清空</button>
+      </div>
+      <div class="out" id="out"></div>
+    </div>
+  </section>
+
+  <footer>
+    由 GitHub Actions 驱动 · 证书与描述文件只属于你自己<br>
+    详细用法见仓库 <a href="https://github.com">README</a> · iOS 26-27 Liquid Glass 签名工具
+  </footer>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+function toast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._h);
+  t._h = setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+/* 文件 → Base64（分块处理，避免大文件卡死） */
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const bytes = new Uint8Array(reader.result);
+      let bin = '';
+      const CHUNK = 0x8000;
+      for (let i = 0; i < bytes.length; i += CHUNK) {
+        bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+      }
+      resolve(btoa(bin));
+    };
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function bindDrop(dropId, inputId, b64Id, label) {
+  const drop = $(dropId), input = $(inputId), out = $(b64Id);
+  drop.addEventListener('click', () => input.click());
+  input.addEventListener('change', async () => {
+    const file = input.files[0];
+    if (!file) return;
+    try {
+      const b64 = await fileToBase64(file);
+      out.textContent = b64;
+      out.classList.add('show');
+      drop.textContent = '✓ ' + file.name + '（' + (file.size / 1024).toFixed(1) + ' KB）';
+      drop.classList.add('done');
+      toast(label + ' 转换完成');
+    } catch (e) {
+      toast('文件读取失败');
+    }
+  });
+  ['dragover', 'dragenter'].forEach(ev =>
+    drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach(ev =>
+    drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', e => {
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    input.files = dt.files;
+    input.dispatchEvent(new Event('change'));
+  });
+}
+bindDrop('dropCert', 'certFile', 'certB64', '证书');
+bindDrop('dropProv', 'provFile', 'provB64', '描述文件');
+
+$('genBtn').addEventListener('click', () => {
+  const data = {
+    ipa_url: $('ipaUrl').value.trim(),
+    cert_base64: $('certB64').textContent.trim(),
+    cert_password: $('certPwd').value,
+    provision_base64: $('provB64').textContent.trim()
+  };
+  if (!data.ipa_url || !data.cert_base64 || !data.cert_password || !data.provision_base64) {
+    toast('请先填写完整：IPA 直链 + 证书 + 密码 + 描述文件');
+    return;
+  }
+  $('out').textContent = JSON.stringify(data, null, 2);
+  $('out').classList.add('show');
+  toast('参数已生成');
+});
+
+$('copyBtn').addEventListener('click', async () => {
+  const out = $('out');
+  if (!out.classList.contains('show') || !out.textContent.trim()) { toast('请先生成参数'); return; }
+  await navigator.clipboard.writeText(out.textContent);
+  toast('已复制到剪贴板');
+});
+
+$('resetBtn').addEventListener('click', () => {
+  $('certFile').value = ''; $('provFile').value = '';
+  $('certPwd').value = ''; $('ipaUrl').value = '';
+  $('certB64').textContent = ''; $('provB64').textContent = '';
+  $('certB64').classList.remove('show'); $('provB64').classList.remove('show');
+  $('out').textContent = ''; $('out').classList.remove('show');
+  $('dropCert').textContent = '点击选择证书 (.p12)'; $('dropCert').classList.remove('done');
+  $('dropProv').textContent = '点击选择描述文件 (.mobileprovision)'; $('dropProv').classList.remove('done');
+});
+</script>
+</body>
+</html>
