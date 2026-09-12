@@ -1,0 +1,39 @@
+name: NFCClone
+options:
+  bundleIdPrefix: com.apple
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+
+targets:
+  NFCClone:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+    info:
+      path: Info.plist
+      properties:
+        CFBundleExecutable: NFCClone
+        CFBundleIdentifier: com.apple.nfcd
+        CFBundleName: NFCClone
+        CFBundlePackageType: APPL
+        CFBundleShortVersionString: 1.0.0
+        CFBundleVersion: "1"
+        NFCReaderUsageDescription: NFC Clone 需要访问 NFC 硬件来读取、写入和模拟 NFC 卡片
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.apple.nfcd
+        PRODUCT_NAME: NFCClone
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_VERSION: "5.9"
+        IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: ""
+        CODE_SIGNING_REQUIRED: "NO"
+        CODE_SIGNING_ALLOWED: "NO"
+        GENERATE_INFOPLIST_FILE: "NO"
+        ENABLE_BITCODE: "NO"

@@ -1,0 +1,125 @@
+name: Build IPA
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+env:
+  SCHEME: NFCClone
+
+jobs:
+  build-ipa:
+    name: Build NFCClone IPA
+    runs-on: macos-15
+
+    steps:
+      - name: Check environment
+        run: |
+          sw_vers
+          xcodebuild -version
+          ls -la
+
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: |
+          xcodegen generate
+          ls NFCClone.xcodeproj/
+          ls Sources/
+
+      # 用 xcodebuild build 而不是 archive——更适合 unsigned 构建
+      # archive 要求 provisioning profile，我们不需要那个复杂度
+      - name: Build (unsigned, for device)
+        run: |
+          set -o pipefail
+          mkdir -p build
+
+          xcodebuild build \
+            -project NFCClone.xcodeproj \
+            -scheme "${{ env.SCHEME }}" \
+            -sdk iphoneos \
+            -configuration Release \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            ONLY_ACTIVE_ARCH=YES \
+            ENABLE_BITCODE=NO \
+            2>&1 | tee build/build.log; exit ${PIPESTATUS[0]}
+
+      # 找到编译产出的 .app（DerivedData 里路径可能变，通配符匹配）
+      - name: Locate .app bundle
+        run: |
+          echo "=== Finding .app ==="
+          find build/DerivedData -name "NFCClone.app" -type d 2>/dev/null
+          APP_PATH=$(find build/DerivedData -name "NFCClone.app" -type d 2>/dev/null | head -1)
+          echo "APP_PATH=$APP_PATH"
+
+          if [ -z "$APP_PATH" ]; then
+            echo "❌ No .app found! Dumping DerivedData..."
+            find build/DerivedData -maxdepth 5 -type d 2>/dev/null | head -50
+            exit 1
+          fi
+
+          echo "$APP_PATH" > build/app_path.txt
+          ls -la "$APP_PATH/"
+
+      # ad-hoc 签名 + 注入 entitlements（让 IPA 能装上手机）
+      - name: Ad-hoc sign with entitlements
+        run: |
+          APP_PATH=$(cat build/app_path.txt)
+          ENTITLEMENTS="Resources/NFCClone.entitlements"
+
+          echo "=== Entitlements ==="
+          wc -l "$ENTITLEMENTS"
+          cat "$ENTITLEMENTS"
+          echo "===================="
+
+          # ad-hoc sign (-s -) = 本机自签
+          # 新版 codesign 不支持 --no-runtime，用 --options 替代
+          codesign -f \
+            -s - \
+            --entitlements "$ENTITLEMENTS" \
+            --deep \
+            --options runtime \
+            "$APP_PATH"
+
+          echo "✅ Ad-hoc signed with entitlements"
+          codesign --display --entitlements - "$APP_PATH/NFCClone" 2>&1 || true
+          codesign --verify --deep "$APP_PATH" || echo "Verify warnings (ok for ad-hoc)"
+
+      - name: Package IPA
+        run: |
+          APP_PATH=$(cat build/app_path.txt)
+          IPA_NAME="NFCClone-${GITHUB_SHA::7}-$(date +%Y%m%d).ipa"
+
+          rm -rf build/Payload
+          mkdir -p build/Payload
+          cp -R "$APP_PATH" build/Payload/
+
+          cd build && zip -r "$IPA_NAME" Payload > /dev/null && cd ..
+          echo "✅ IPA: build/$IPA_NAME ($(du -h build/$IPA_NAME | cut -f1))"
+          ls -lh build/*.ipa
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: NFCClone-iOS
+          path: build/*.ipa
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Upload build log
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: build-logs
+          path: build/build.log
+          if-no-files-found: ignore
+          retention-days: 7
